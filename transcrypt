@@ -238,12 +238,12 @@ git_clean() {
 			(
 				echo -n "Salted__" && echo -n "$salt" | hex_to_bin &&
 					# Encrypt file to binary ciphertext
-					ENC_PASS=$password "$openssl_path" enc -e "-${cipher}" -md MD5 -pass env:ENC_PASS -S "$salt" -in "$tempfile"
+					zstd -c < "$tempfile" | ENC_PASS=$password "$openssl_path" enc -e "-${cipher}" -md MD5 -iter 1 -pass env:ENC_PASS -S "$salt"
 			) |
 				openssl base64
 		else
 			# Encrypt file to base64 ciphertext
-			ENC_PASS=$password "$openssl_path" enc -e -a "-${cipher}" -md MD5 -pass env:ENC_PASS -S "$salt" -in "$tempfile"
+			zstd -c < "$tempfile" | ENC_PASS=$password "$openssl_path" enc -e -a "-${cipher}" -md MD5 -iter 1 -pass env:ENC_PASS -S "$salt"
 		fi
 	fi
 }
@@ -256,7 +256,7 @@ git_smudge() {
 	cipher=$(git config --get --local "transcrypt${context_config_group}.cipher")
 	password=$(load_password "$context_config_group")
 	openssl_path=$(git config --get --local transcrypt.openssl-path)
-	tee "$tempfile" | ENC_PASS=$password "$openssl_path" enc -d "-${cipher}" -md MD5 -pass env:ENC_PASS -a 2>/dev/null || cat "$tempfile"
+	tee "$tempfile" | (ENC_PASS=$password "$openssl_path" enc -d "-${cipher}" -md MD5 -iter 1 -pass env:ENC_PASS -a | zstd -d -c) || cat "$tempfile"
 }
 
 git_textconv() {
@@ -273,7 +273,7 @@ git_textconv() {
 	cipher=$(git config --get --local "transcrypt${context_config_group}.cipher")
 	password=$(load_password "$context_config_group")
 	openssl_path=$(git config --get --local transcrypt.openssl-path)
-	ENC_PASS=$password "$openssl_path" enc -d "-${cipher}" -md MD5 -pass env:ENC_PASS -a -in "$filename" 2>/dev/null || cat "$filename"
+	(ENC_PASS=$password "$openssl_path" enc -d "-${cipher}" -md MD5 -iter 1 -pass env:ENC_PASS -a -in "$filename" | zstd -d -c) || cat "$filename"
 }
 
 # shellcheck disable=SC2005,SC2002,SC2181
